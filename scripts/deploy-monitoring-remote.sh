@@ -14,5 +14,8 @@ ssh -i "$DEPLOY_SSH_KEY_FILE" \
   -o BatchMode=yes \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \
+  -o ControlMaster=auto \
+  -o ControlPersist=60s \
+  -o ControlPath=/tmp/limit-deploy-ssh-%C \
   "$DEPLOY_USER@$DEPLOY_HOST" \
   "cd '$DEPLOY_PATH' && bash scripts/deploy-monitoring.sh"

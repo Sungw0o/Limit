@@ -26,11 +26,16 @@ cd "$root_dir"
 sync_archive() {
   remote_command=$1
   shift
+  # ControlMaster/ControlPersist: 이 스크립트가 배포 잡의 첫 SSH 호출이라, 여기서 연 연결을
+  # apply-ci-s3-env-remote.sh/deploy-remote.sh/rollback-remote.sh가 이어서 재사용한다(최대 60초).
   tar -czf - "$@" \
     | ssh -i "$DEPLOY_SSH_KEY_FILE" \
         -o BatchMode=yes \
         -o IdentitiesOnly=yes \
         -o StrictHostKeyChecking=yes \
+        -o ControlMaster=auto \
+        -o ControlPersist=60s \
+        -o ControlPath=/tmp/limit-deploy-ssh-%C \
         "$DEPLOY_USER@$DEPLOY_HOST" \
         "$remote_command"
 }

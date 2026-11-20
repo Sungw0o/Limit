@@ -59,5 +59,8 @@ done
   -o BatchMode=yes \
   -o IdentitiesOnly=yes \
   -o StrictHostKeyChecking=yes \
+  -o ControlMaster=auto \
+  -o ControlPersist=60s \
+  -o ControlPath=/tmp/limit-deploy-ssh-%C \
   "$DEPLOY_USER@$DEPLOY_HOST" \
   "sh '$DEPLOY_PATH/scripts/apply-ec2-env-remote.sh' '$DEPLOY_PATH'"
