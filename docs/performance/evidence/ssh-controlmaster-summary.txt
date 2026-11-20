@@ -1,0 +1,5 @@
+=== BEFORE: 3 separate cold SSH connections per trial (수정 전 스크립트와 동일 패턴) ===
+=== AFTER: ControlMaster/ControlPersist 공유 (수정본) ===
+BEFORE (3 cold connections): n=30 avg=0.4551s stdev=0.0229s min=0.4195s p50=0.4563s p95=0.4982s max=0.5036s
+AFTER  (ControlMaster 재사용): n=30 avg=0.1696s stdev=0.0106s min=0.1499s p50=0.1695s p95=0.1859s max=0.1866s
+delta avg: 0.2855s (62.7% reduction)

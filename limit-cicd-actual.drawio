@@ -1,0 +1,148 @@
+<mxfile host="Electron" agent="draw.io">
+  <diagram name="LIMIT CI/CD (실제)" id="limit-cicd-actual">
+    <mxGraphModel dx="2020" dy="1374" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2250" pageHeight="1620" background="#FFFFFF" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="t" parent="1" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#0F172A;" value="LIMIT CI/CD 파이프라인" vertex="1">
+          <mxGeometry height="46" width="1400" x="60" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="t2" parent="1" style="text;html=1;align=left;verticalAlign=middle;strokeColor=none;fillColor=none;fontSize=16;fontColor=#475569;" value="stages: [guard, test, quality, package, deploy, verify] · 변경 파일(changes) 기준 8개 경로로 분기" vertex="1">
+          <mxGeometry height="30" width="1500" x="60" y="76" as="geometry" />
+        </mxCell>
+        <mxCell id="trg" parent="1" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#F8FAFC;strokeColor=#64748B;fontSize=15;verticalAlign=middle;" value="GitLab push (dev · main) / Merge Request" vertex="1">
+          <mxGeometry height="70" width="340" x="60" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="b-guard" parent="1" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontSize=20;fontStyle=1;fillColor=#FEF2F2;strokeColor=#EF4444;fontColor=#EF4444;" value="guard" vertex="1">
+          <mxGeometry height="150" width="1620" x="60" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="b-test" parent="1" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontSize=20;fontStyle=1;fillColor=#EFF6FF;strokeColor=#326CE5;fontColor=#326CE5;" value="test  ·  10개 job 병렬 실행" vertex="1">
+          <mxGeometry height="300" width="1620" x="60" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="b-quality" parent="1" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontSize=20;fontStyle=1;fillColor=#F5F3FF;strokeColor=#8B5CF6;fontColor=#8B5CF6;" value="quality" vertex="1">
+          <mxGeometry height="160" width="1620" x="60" y="780" as="geometry" />
+        </mxCell>
+        <mxCell id="b-package" parent="1" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontSize=20;fontStyle=1;fillColor=#FFF7ED;strokeColor=#F97316;fontColor=#F97316;" value="package" vertex="1">
+          <mxGeometry height="150" width="1620" x="60" y="980" as="geometry" />
+        </mxCell>
+        <mxCell id="b-deploy" parent="1" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontSize=20;fontStyle=1;fillColor=#ECFDF5;strokeColor=#10B981;fontColor=#10B981;" value="deploy" vertex="1">
+          <mxGeometry height="150" width="1620" x="60" y="1170" as="geometry" />
+        </mxCell>
+        <mxCell id="b-verify" parent="1" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=8;fontSize=20;fontStyle=1;fillColor=#F0FDFA;strokeColor=#0D9488;fontColor=#0D9488;" value="verify" vertex="1">
+          <mxGeometry height="150" width="1620" x="60" y="1360" as="geometry" />
+        </mxCell>
+        <mxCell id="j-sg" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#EF4444;fontColor=#0F172A;" value="&lt;b&gt;secret_guard&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;커밋에 비밀키·토큰이 들어갔는지 (gitleaks)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="420" x="110" y="295" as="geometry" />
+        </mxCell>
+        <mxCell id="n-sg" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=13;fontColor=#64748B;align=left;" value="커밋 범위만 스캔 · 백엔드 로깅 규칙 가드는 조건부 실행" vertex="1">
+          <mxGeometry height="80" width="600" x="570" y="295" as="geometry" />
+        </mxCell>
+        <mxCell id="j-t0" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;backend_unit_test&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;gradlew test · 단위 테스트&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="110" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="j-t1" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;backend_integration_core_test&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;핵심 도메인 통합 (MySQL · Redis)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="430" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="j-t2" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;backend_integration_support_test&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;부가 기능 통합 (외부 연동)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="750" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="j-t3" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;backend_infrastructure_test&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;저장소·외부 연동 계층&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="1070" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="j-t4" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;backend_scripts_test&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;배포 스크립트 문법·동작 (sh -n)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="1390" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="j-u0" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;frontend_lint&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;코드 스타일·정적 오류&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="110" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="j-u1" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;frontend_test&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;프론트 단위 테스트&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="430" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="j-u2" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;windows_scanner_build&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;Windows 진단 exe 빌드&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="750" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="j-u3" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;frontend_build&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;정적 파일 빌드 (exe 포함)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="1070" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="j-u4" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#326CE5;fontColor=#0F172A;" value="&lt;b&gt;terraform_*_validate&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;인프라 코드 fmt · validate&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="1390" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="e-ws" edge="1" parent="1" source="j-u2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#326CE5;endArrow=block;endFill=1;fontSize=12;fontColor=#326CE5;labelBackgroundColor=#FFFFFF;" target="j-u3" value="needs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="j-q0" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#8B5CF6;fontColor=#0F172A;" value="&lt;b&gt;backend_coverage_report&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;JaCoCo 커버리지 병합&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="110" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="j-q1" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#8B5CF6;fontColor=#0F172A;" value="&lt;b&gt;sonarqube&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;코드 스멜·중복·취약 패턴&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="430" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="j-q2" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#8B5CF6;fontColor=#0F172A;" value="&lt;b&gt;openapi_contract&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;API 명세 호환성 깨짐 (oasdiff) · MR&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="750" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="j-q3" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#8B5CF6;fontColor=#0F172A;" value="&lt;b&gt;dependency_check&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;의존성 CVE (OWASP)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="1070" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="j-q4" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#8B5CF6;fontColor=#0F172A;" value="&lt;b&gt;pr_agent_review&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;MR 변경분 AI 코드 리뷰 · MR&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="1390" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="e-cov" edge="1" parent="1" source="j-q0" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#8B5CF6;endArrow=block;endFill=1;" target="j-q1" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="j-img" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#F97316;fontColor=#0F172A;" value="&lt;b&gt;backend_image&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;Docker 이미지 빌드 · digest 고정&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="470" x="110" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="j-cs" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#F97316;fontColor=#0F172A;" value="&lt;b&gt;container_scan&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;이미지 OS·패키지 취약점 (Trivy) · HIGH,CRITICAL 시 배포 중단&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="620" x="680" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="e-img" edge="1" parent="1" source="j-img" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#F97316;endArrow=block;endFill=1;fontSize=12;fontColor=#F97316;labelBackgroundColor=#FFFFFF;" target="j-cs" value="needs">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="j-d0" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#10B981;fontColor=#0F172A;" value="&lt;b&gt;deploy_prod&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;EC2 Blue/Green · readiness 통과 후 nginx 전환&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="520" x="110" y="1220" as="geometry" />
+        </mxCell>
+        <mxCell id="j-d1" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#10B981;fontColor=#0F172A;" value="&lt;b&gt;frontend_deploy_prod&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;S3 업로드 · CloudFront 배포&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="330" x="670" y="1220" as="geometry" />
+        </mxCell>
+        <mxCell id="j-d2" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#10B981;fontColor=#0F172A;" value="&lt;b&gt;monitoring_deploy_prod&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;모니터링 스택 배포&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="270" x="1030" y="1220" as="geometry" />
+        </mxCell>
+        <mxCell id="j-d3" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#10B981;fontColor=#0F172A;" value="&lt;b&gt;rollback_prod&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;이전 이미지로 복구 (수동)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="88" width="290" x="1330" y="1220" as="geometry" />
+        </mxCell>
+        <mxCell id="j-sm" parent="1" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFFFF;verticalAlign=middle;align=center;fontSize=14;strokeColor=#0D9488;fontColor=#0F172A;" value="&lt;b&gt;frontend_smoke_prod&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot; color=&quot;#64748B&quot;&gt;배포 후 실제 URL과 API /health 응답 확인&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="520" x="110" y="1410" as="geometry" />
+        </mxCell>
+        <mxCell id="e-trg-b-guard" edge="1" parent="1" source="trg" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#334155;endArrow=block;endFill=1;exitX=0.06;exitY=1;exitDx=0;exitDy=0;entryX=0.06;entryY=0;entryDx=0;entryDy=0;" target="b-guard" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-b-guard-b-test" edge="1" parent="1" source="b-guard" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#334155;endArrow=block;endFill=1;exitX=0.06;exitY=1;exitDx=0;exitDy=0;entryX=0.06;entryY=0;entryDx=0;entryDy=0;" target="b-test" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-b-test-b-quality" edge="1" parent="1" source="b-test" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#334155;endArrow=block;endFill=1;exitX=0.06;exitY=1;exitDx=0;exitDy=0;entryX=0.06;entryY=0;entryDx=0;entryDy=0;" target="b-quality" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-b-quality-b-package" edge="1" parent="1" source="b-quality" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#334155;endArrow=block;endFill=1;exitX=0.06;exitY=1;exitDx=0;exitDy=0;entryX=0.06;entryY=0;entryDx=0;entryDy=0;" target="b-package" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-b-package-b-deploy" edge="1" parent="1" source="b-package" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#334155;endArrow=block;endFill=1;exitX=0.06;exitY=1;exitDx=0;exitDy=0;entryX=0.06;entryY=0;entryDx=0;entryDy=0;" target="b-deploy" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-b-deploy-b-verify" edge="1" parent="1" source="b-deploy" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=2;strokeColor=#334155;endArrow=block;endFill=1;exitX=0.06;exitY=1;exitDx=0;exitDy=0;entryX=0.06;entryY=0;entryDx=0;entryDy=0;" target="b-verify" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cg" parent="1" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;strokeWidth=2;fillColor=#FFFBEB;strokeColor=#F59E0B;fontColor=#92400E;fontSize=18;fontStyle=1;verticalAlign=top;align=left;spacingLeft=16;spacingTop=10;" value="changes 기준 분기 8경로" vertex="1">
+          <mxGeometry height="340" width="420" x="1720" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="cg2" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=14;align=left;fontColor=#78350F;" value="backend&lt;br&gt;backend_unit&lt;br&gt;backend_integration&lt;br&gt;backend_scripts&lt;br&gt;backend_logging&lt;br&gt;monitoring&lt;br&gt;openapi&lt;br&gt;frontend" vertex="1">
+          <mxGeometry height="270" width="380" x="1750" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="cg3" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=13;align=left;fontStyle=2;fontColor=#92400E;" value="백엔드가 단위·통합·스크립트·로깅으로 다시&lt;br&gt;나뉘어, 로깅 규칙만 바꾸면 통합 테스트는&lt;br&gt;실행되지 않는다" vertex="1">
+          <mxGeometry height="80" width="430" x="1720" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=15;align=left;fontStyle=2;fontColor=#B91C1C;" value="※ 이미지 빌드(package)는 test·quality가 모두 끝난 뒤 실행된다. 테스트와 병렬이 아니다." vertex="1">
+          <mxGeometry height="36" width="1600" x="60" y="1530" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

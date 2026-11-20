@@ -1,0 +1,8 @@
+=== BEFORE-TEST actuator metrics ===
+hikaricp_connections_acquire_seconds_count{pool="HikariPool-1"} 3
+hikaricp_connections_acquire_seconds_sum{pool="HikariPool-1"} 0.002166125
+hikaricp_connections_acquire_seconds_max{pool="HikariPool-1"} 0.002137177
+hikaricp_connections_active{pool="HikariPool-1"} 0.0
+hikaricp_connections_idle{pool="HikariPool-1"} 10.0
+hikaricp_connections_pending{pool="HikariPool-1"} 0.0
+jvm_threads_live_threads 36.0
