@@ -12,6 +12,41 @@
 - **구매자**는 그 검수 결과를 보고, 필요하면 판매자와 영상통화로 기기를 직접 확인한 뒤 결제합니다.
 - **결제 대금**은 구매자가 물건을 받고 확정할 때까지 보관되며, 문제가 있으면 재검수와 환불로 이어집니다.
 
+## 한눈에 보기
+
+| 항목 | 내용 |
+| --- | --- |
+| 서비스 | 판매자가 남긴 기기 검수 결과를 구매자가 확인하고 거래하는 중고 전자기기 거래 서비스 |
+| 기간 | 2026.07 – 2026.08 |
+| 인원 | 6명 팀 프로젝트 |
+| 내 역할 | 상품 도메인 백엔드, 인프라와 GitLab CI/CD |
+| 기술 스택 | Java 21, Spring Boot 4, Vue 3, MySQL, MongoDB, Redis, Docker Compose, Nginx, GitLab CI, Prometheus·Grafana ([전체 표](#-tech-stacks)) |
+
+## 내가 맡은 일
+
+- 상품 등록·수정·판매 상태 전이 API를 설계하고 구현했습니다. 조건 검색·정렬과 관심상품(찜)도 함께 만들었습니다. ([docs/api/product.md](docs/api/product.md), [docs/api/wishlist.md](docs/api/wishlist.md))
+- 상품 목록의 상품별 반복 조회를 entity graph와 페이지 단위 일괄 조회로 바꿨습니다. 목록 100건 기준 예상 쿼리가 최대 약 402회에서 4회로 줄었습니다(page·count 2회, 체크리스트 집계 1회, 썸네일 조회 1회로 계산). ([수치 기록](docs/api/product.md#수치-기록))
+- 기기 카탈로그 테이블을 분리하고 조회수 집계와 조회수순 정렬을 구현했습니다. ([ADR-0003](docs/adr/0003-device-catalog-split.md), [ADR-0005](docs/adr/0005-product-view-count.md))
+- 단일 EC2의 Docker Compose·Nginx Blue-Green 배포를 구성했습니다. Flyway 스키마 관리, Prometheus·Loki·Grafana·Alertmanager 관측 스택, 데이터 백업도 맡았습니다.
+- GitLab CI 6단계 파이프라인을 만들었습니다. PR-Agent AI 리뷰, SonarQube 커버리지, 백엔드 수동 롤백 Job을 붙였습니다. ([.gitlab-ci.yml](.gitlab-ci.yml))
+
+## 문제를 고친 기록
+
+### 1. 동시 조회와 판매자 수정이 조회수 증가분을 덮어쓸 수 있던 구조
+
+- **문제**: 조회수를 엔티티로 읽어 1을 더해 저장하면 동시에 들어온 조회끼리 증가분을 잃을 수 있었습니다. 판매자가 상품을 수정할 때도 먼저 읽어 둔 오래된 조회수가 다시 저장될 수 있었습니다.
+- **원인**: Hibernate는 기본으로 엔티티의 모든 열을 UPDATE합니다. 그래서 판매자 수정 트랜잭션이 읽어 둔 `view_count`까지 함께 덮어쓰는 구조였습니다.
+- **해결**: DB가 한 번에 더하는 `UPDATE ... SET view_count = view_count + 1` 한 줄로 바꿨습니다([ListingRepository.java](backend/src/main/java/com/c203/limit/domain/product/repository/ListingRepository.java#L123-L135)). 상세 응답을 먼저 만들고 집계는 전용 스레드 풀에서 별도 트랜잭션으로 실행했습니다([ProductViewCountDispatcher](backend/src/main/java/com/c203/limit/domain/product/service/ProductViewCountDispatcher.java), [ProductViewCountRecorder](backend/src/main/java/com/c203/limit/domain/product/service/ProductViewCountRecorder.java)). `Listing`에 `@DynamicUpdate`를 붙여 판매자 수정은 바뀐 열만 쓰게 했습니다.
+- **결과**: 16개 스레드가 25회씩 동시에 조회한 400건이 모두 반영되는 것을 통합 테스트로 확인했습니다. 판매자 수정 뒤에도 증가분이 남는 것도 같은 테스트에서 확인했습니다([ListingViewCountIntegrationTests.java](backend/src/integrationTest/java/com/c203/limit/domain/product/repository/ListingViewCountIntegrationTests.java)).
+- **기록**: [ADR-0005 상품 조회수 집계](docs/adr/0005-product-view-count.md)
+
+### 2. 테스트를 기다리며 직렬로 돌던 CI 배포 경로
+
+- **문제**: 백엔드 패키징이 단위·통합 테스트가 모두 끝난 뒤에야 시작해 배포까지의 경로가 직렬로 길었습니다. 병렬 Gradle Job들이 같은 캐시 키에 동시에 저장해 서로의 캐시를 덮어썼습니다.
+- **원인**: `.gitlab-ci.yml`을 읽어 확인했습니다. 패키징 Job의 `needs`가 두 테스트 Job을 가리켰습니다. 모든 Gradle Job이 같은 캐시를 읽고 쓰는 설정이었습니다. 모든 백엔드 Job이 같은 넓은 변경 경로 규칙을 공유했습니다.
+- **해결**: 캐시는 `backend_unit_test` 하나만 갱신하고 나머지는 읽기 전용(`policy: pull`)으로 바꿨습니다([L168-L178](.gitlab-ci.yml#L168-L178)). 이미지 빌드는 테스트와 동시에 시작하게 했습니다([L581-L586](.gitlab-ci.yml#L581-L586)). 통합 테스트는 core·support 두 묶음으로 나눠 병렬 실행했습니다([L245](.gitlab-ci.yml#L245), [L279](.gitlab-ci.yml#L279)). 외부 엔진 전체 기동 검사는 `infrastructureTest`로 떼어 정기 실행으로 옮겼습니다([L318-L339](.gitlab-ci.yml#L318-L339), [build.gradle](backend/build.gradle#L134-L144)). 단위·통합·스크립트 테스트마다 변경 경로 규칙을 따로 두었습니다([L45-L104](.gitlab-ci.yml#L45-L104)).
+- **결과**: 패키징과 테스트가 동시에 돌고, 바뀌지 않은 영역의 테스트 Job은 만들어지지 않습니다. 테스트 통과는 `deploy_prod`의 `needs`로 계속 요구해 테스트가 실패한 이미지는 배포되지 않습니다([L664-L687](.gitlab-ci.yml#L664-L687)).
+- **기록**: 커밋 `e72bd35`, `5d12054`, `e85612a`. 파이프라인 전체 구성은 [CI/CD Pipeline](#-cicd-pipeline) 절에 있습니다.
 
 ## 💻 Tech Stacks
 
