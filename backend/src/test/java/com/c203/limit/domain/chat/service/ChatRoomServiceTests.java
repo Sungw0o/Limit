@@ -46,6 +46,7 @@ import com.c203.limit.domain.chat.repository.ChatOutboxEventRepository;
 import com.c203.limit.domain.chat.repository.ChatMediaRepository;
 import com.c203.limit.domain.chat.repository.ChatMessageMediaRepository;
 import com.c203.limit.domain.chat.repository.ChatRoomSummaryProjection;
+import com.c203.limit.domain.chat.repository.UnreadMessageProjection;
 import com.c203.limit.domain.chat.repository.ListingChatReader;
 import com.c203.limit.domain.chat.repository.ListingChatReader.ListingChatInfo;
 import com.c203.limit.global.exception.BusinessException;
@@ -248,8 +249,10 @@ class ChatRoomServiceTests {
         ChatRoomSummaryProjection second = summary(90L, BUYER_ID, SELLER_ID, 4L, 4L);
         when(chatRoomRepository.findSummariesByMemberId(
                 eq(BUYER_ID), isNull(), any(Pageable.class))).thenReturn(List.of(first, second));
-        when(chatMessageRepository.countUnreadFromCounterpart(100L, BUYER_ID, 3L))
-                .thenReturn(5L);
+        // 방 하나짜리 페이지(size=1)라 배치 조회 대상은 roomId=100 하나, 기준점은 그 방의 lastReadSeq(3)이다.
+        // 상대방이 보낸 메시지 순번 4~8(5개)이 3보다 커서 unreadCount=5가 나와야 한다.
+        when(chatMessageRepository.findCounterpartMessagesSince(List.of(100L), BUYER_ID, 3L))
+                .thenReturn(unreadMessages(100L, 4L, 5L, 6L, 7L, 8L));
         when(contextReader.findAll(List.of(100L), BUYER_ID)).thenReturn(
                 java.util.Map.of(100L, new ChatRoomContext(
                         100L, "판매자", "members/3/profile/abc", "상품",
@@ -283,13 +286,43 @@ class ChatRoomServiceTests {
         ChatRoomSummaryProjection row = summary(100L, BUYER_ID, SELLER_ID, 8L, null);
         when(chatRoomRepository.findSummariesByMemberId(
                 eq(BUYER_ID), isNull(), any(Pageable.class))).thenReturn(List.of(row));
-        when(chatMessageRepository.countUnreadFromCounterpart(100L, BUYER_ID, 0L))
-                .thenReturn(8L);
+        // lastReadSeq가 없으면(한 번도 안 읽음) 0으로 취급해 기준점이 0이 되고, 상대방이 보낸 1~8번 메시지가
+        // 모두 미확인(8개)이어야 한다.
+        when(chatMessageRepository.findCounterpartMessagesSince(List.of(100L), BUYER_ID, 0L))
+                .thenReturn(unreadMessages(100L, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L));
 
         CursorResponse<ChatRoomSummaryResponse> result = service.findRooms(BUYER_ID, null, 1);
 
         assertThat(result.content().get(0).unreadCount()).isEqualTo(8L);
         assertThat(result.content().get(0).counterpartLastReadSequence()).isZero();
+    }
+
+    @Test
+    void computesUnreadCountsForAWholePageWithOneBatchCallInsteadOfOnePerRoom() {
+        ChatRoomSummaryProjection first = summary(100L, BUYER_ID, SELLER_ID, 8L, 3L);
+        ChatRoomSummaryProjection second = summary(90L, BUYER_ID, SELLER_ID, 6L, 5L);
+        when(chatRoomRepository.findSummariesByMemberId(
+                eq(BUYER_ID), isNull(), any(Pageable.class))).thenReturn(List.of(first, second));
+        // 페이지 안 두 방의 기준점(3, 5) 중 더 오래된 3을 하한으로 한 번만 배치 조회해야 한다.
+        // roomId=100: 4,5,6,7,8 중 3보다 큰 5개가 모두 미확인. roomId=90: 4,5,6 중 방 자신의 기준점(5)보다
+        // 큰 것만(6) 미확인 — 배치 조회 결과에는 기준점 이하(4)도 섞여 오지만 메모리에서 방별로 다시 걸러야 한다.
+        when(chatMessageRepository.findCounterpartMessagesSince(List.of(100L, 90L), BUYER_ID, 3L))
+                .thenReturn(java.util.stream.Stream.concat(
+                                unreadMessages(100L, 4L, 5L, 6L, 7L, 8L).stream(),
+                                unreadMessages(90L, 4L, 5L, 6L).stream())
+                        .toList());
+        when(contextReader.findAll(List.of(100L, 90L), BUYER_ID)).thenReturn(java.util.Map.of());
+
+        CursorResponse<ChatRoomSummaryResponse> result = service.findRooms(BUYER_ID, null, 2);
+
+        assertThat(result.content()).hasSize(2);
+        assertThat(result.content().get(0).roomId()).isEqualTo(100L);
+        assertThat(result.content().get(0).unreadCount()).isEqualTo(5L);
+        assertThat(result.content().get(1).roomId()).isEqualTo(90L);
+        assertThat(result.content().get(1).unreadCount()).isEqualTo(1L);
+        verify(chatMessageRepository, org.mockito.Mockito.times(1))
+                .findCounterpartMessagesSince(List.of(100L, 90L), BUYER_ID, 3L);
+        verify(chatMessageRepository, never()).countUnreadFromCounterpart(any(), any(), org.mockito.ArgumentMatchers.anyLong());
     }
 
     @Test
@@ -811,6 +844,15 @@ class ChatRoomServiceTests {
             public Long getCounterpartLastReadSeq() { return lastReadSeq == null ? null : 2L; }
             public LocalDateTime getCreatedAt() { return LocalDateTime.of(2026, 7, 22, 12, 0); }
         };
+    }
+
+    private List<UnreadMessageProjection> unreadMessages(Long roomId, Long... roomSequences) {
+        return java.util.Arrays.stream(roomSequences)
+                .<UnreadMessageProjection>map(sequence -> new UnreadMessageProjection() {
+                    public Long getRoomId() { return roomId; }
+                    public Long getRoomSequence() { return sequence; }
+                })
+                .toList();
     }
 
     private ChatRoom room(Long id) {

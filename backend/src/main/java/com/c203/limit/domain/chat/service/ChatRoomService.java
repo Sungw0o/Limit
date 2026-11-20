@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,7 @@ import com.c203.limit.domain.chat.repository.ChatRoomRepository;
 import com.c203.limit.domain.chat.repository.ChatRoomSummaryProjection;
 import com.c203.limit.domain.chat.repository.ListingChatReader;
 import com.c203.limit.domain.chat.repository.ListingChatReader.ListingChatInfo;
+import com.c203.limit.domain.chat.repository.UnreadMessageProjection;
 import com.c203.limit.domain.product.storage.MediaUrlResolver;
 import com.c203.limit.global.exception.BusinessException;
 import com.c203.limit.global.exception.ErrorCode;
@@ -130,9 +132,11 @@ public class ChatRoomService {
         List<ChatRoomSummaryProjection> pageRows = rows.stream().limit(size).toList();
         Map<Long, ChatRoomContext> contexts = contextReader.findAll(
                 pageRows.stream().map(ChatRoomSummaryProjection::getRoomId).toList(), memberId);
+        Map<Long, Long> unreadCounts = unreadCountsByRoom(pageRows, memberId);
         List<ChatRoomSummaryResponse> content = rows.stream()
                 .limit(size)
-                .map(row -> toSummary(row, memberId, contexts.get(row.getRoomId())))
+                .map(row -> toSummary(
+                        row, memberId, contexts.get(row.getRoomId()), unreadCounts.getOrDefault(row.getRoomId(), 0L)))
                 .toList();
         String nextCursor = hasNext ? content.get(content.size() - 1).roomId().toString() : null;
         return new CursorResponse<>(content, nextCursor, hasNext);
@@ -298,14 +302,46 @@ public class ChatRoomService {
                 .orElse(message);
     }
 
+    /**
+     * 방마다 {@link ChatMessageRepository#countUnreadFromCounterpart}를 반복 호출하던 것을 페이지 단위
+     * 배치 조회 1번으로 대체한다. 방마다 lastReadSeq 기준점이 달라 SQL의 GROUP BY만으로는 방별 정확한
+     * 개수를 낼 수 없으므로, "이 페이지의 가장 오래된 기준점보다 뒤에 온 상대방 메시지"까지만 DB에서 가져오고
+     * (그 이상은 방 규모와 무관하게 이 페이지에 필요한 만큼만 가져오는 것), 방별 정확한 lastReadSeq 기준
+     * 필터링·카운트는 메모리에서 수행한다.
+     */
+    private Map<Long, Long> unreadCountsByRoom(List<ChatRoomSummaryProjection> pageRows, Long memberId) {
+        if (pageRows.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> roomIds = pageRows.stream().map(ChatRoomSummaryProjection::getRoomId).toList();
+        Map<Long, Long> lastReadSeqByRoom = pageRows.stream()
+                .collect(Collectors.toMap(
+                        ChatRoomSummaryProjection::getRoomId,
+                        row -> row.getLastReadSeq() == null ? 0L : row.getLastReadSeq()));
+        long minLastReadSeq = lastReadSeqByRoom.values().stream().mapToLong(Long::longValue).min().orElse(0L);
+
+        Map<Long, List<Long>> counterpartSequencesByRoom =
+                chatMessageRepository.findCounterpartMessagesSince(roomIds, memberId, minLastReadSeq).stream()
+                        .collect(Collectors.groupingBy(
+                                UnreadMessageProjection::getRoomId,
+                                Collectors.mapping(UnreadMessageProjection::getRoomSequence, Collectors.toList())));
+
+        return roomIds.stream().collect(Collectors.toMap(
+                roomId -> roomId,
+                roomId -> {
+                    long lastReadSeq = lastReadSeqByRoom.getOrDefault(roomId, 0L);
+                    return counterpartSequencesByRoom.getOrDefault(roomId, List.of()).stream()
+                            .filter(sequence -> sequence > lastReadSeq)
+                            .count();
+                }));
+    }
+
     private ChatRoomSummaryResponse toSummary(
-            ChatRoomSummaryProjection row, Long memberId, ChatRoomContext context) {
+            ChatRoomSummaryProjection row, Long memberId, ChatRoomContext context, long unreadCount) {
         Long counterpartId = memberId.equals(row.getBuyerId()) ? row.getSellerId() : row.getBuyerId();
         long lastReadSeq = row.getLastReadSeq() == null ? 0L : row.getLastReadSeq();
         long counterpartLastReadSeq =
                 row.getCounterpartLastReadSeq() == null ? 0L : row.getCounterpartLastReadSeq();
-        long unreadCount = chatMessageRepository.countUnreadFromCounterpart(
-                row.getRoomId(), memberId, lastReadSeq);
         return new ChatRoomSummaryResponse(
                 row.getRoomId(), row.getListingId(), counterpartId,
                 context == null ? null : context.counterpartNickname(),
