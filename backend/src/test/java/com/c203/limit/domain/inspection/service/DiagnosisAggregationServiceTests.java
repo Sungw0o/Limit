@@ -31,6 +31,7 @@ import com.c203.limit.global.exception.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -457,5 +458,87 @@ class DiagnosisAggregationServiceTests {
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    // ---- getFieldValuesForListing (배치 조회): 단건 경로(getDiagnosis/getFieldValue)와
+    // 같은 필드 선택 로직을 재사용하는지, 데이터 소스만 evidenceRepository.findAllByListingId로
+    // 바뀌었는지 검증한다. ----
+
+    @Test
+    void batchMarksConflictWhenOcrAndFileParseValuesDiffer() {
+        when(evidenceRepository.findAllByListingId(LISTING_ID))
+                .thenReturn(List.of(photoEvidence(), diagnosticFileEvidence()));
+        when(ocrResultRepository.findAllByEvidenceIdIn(anyList()))
+                .thenReturn(List.of(ocrResult(OcrFieldType.RAM, "16GB")));
+        when(dxdiagResultRepository.findAllByEvidenceIdIn(anyList()))
+                .thenReturn(List.of(dxdiagResult(null, "32768MB RAM", null)));
+        when(batteryReportResultRepository.findAllByEvidenceIdIn(anyList())).thenReturn(List.of());
+
+        DiagnosisAggregationService.ListingDiagnosisBatch batch =
+                service.getFieldValuesForListing(LISTING_ID, List.of(listingChecklistItem));
+
+        DiagnosisAggregationService.DiagnosisFieldValue ram =
+                batch.fieldValuesByItemId().get(ITEM_ID).get(DiagnosisFieldName.RAM);
+        assertThat(ram.ocrValue()).isEqualTo("16GB");
+        assertThat(ram.fileParseValue()).isEqualTo("32768MB RAM");
+    }
+
+    @Test
+    void batchUsesListingWideDiagnosticEvidenceForDeviceInfoItem() {
+        // 기기 정보 항목(LAP-SCR-013)은 단건 경로(diagnosticEvidenceIdsFor)에서도 항목 자신이 아니라
+        // 매물 전체의 진단 파일 증거를 본다 — 배치 경로도 같은 listing-wide 증거 목록을 써야 한다.
+        when(listingChecklistItem.getItemCode()).thenReturn("LAP-SCR-013");
+        when(evidenceRepository.findAllByListingId(LISTING_ID))
+                .thenReturn(List.of(photoEvidence(), diagnosticFileEvidence()));
+        when(ocrResultRepository.findAllByEvidenceIdIn(anyList())).thenReturn(List.of());
+        DxdiagResult result =
+                DxdiagResult.builder()
+                        .evidenceId(DIAGNOSTIC_FILE_EVIDENCE_ID)
+                        .modelName("960XFH")
+                        .osVersion("Windows 11 Enterprise 64-bit")
+                        .storageCapacity("975.7 GB")
+                        .parserVersion("dxdiag-v1")
+                        .parseStatus(ParseStatus.SUCCESS)
+                        .parsedAt(LocalDateTime.now())
+                        .build();
+        when(dxdiagResultRepository.findAllByEvidenceIdIn(anyList())).thenReturn(List.of(result));
+
+        DiagnosisAggregationService.ListingDiagnosisBatch batch =
+                service.getFieldValuesForListing(LISTING_ID, List.of(listingChecklistItem));
+
+        Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue> fields =
+                batch.fieldValuesByItemId().get(ITEM_ID);
+        assertThat(fields.get(DiagnosisFieldName.MODEL_NAME).fileParseValue()).isEqualTo("960XFH");
+        assertThat(fields.get(DiagnosisFieldName.OS_VERSION).fileParseValue())
+                .isEqualTo("Windows 11 Enterprise 64-bit");
+        assertThat(fields.get(DiagnosisFieldName.STORAGE_CAPACITY).fileParseValue()).isEqualTo("975.7 GB");
+    }
+
+    @Test
+    void batchOffersOcrEvidenceAsEditTargetWhenFieldWasNeverDetected() {
+        when(listingChecklistItem.getEvidenceType()).thenReturn(EvidenceType.PHOTO);
+        when(evidenceRepository.findAllByListingId(LISTING_ID)).thenReturn(List.of(photoEvidence()));
+        when(ocrResultRepository.findAllByEvidenceIdIn(anyList())).thenReturn(List.of());
+
+        DiagnosisAggregationService.ListingDiagnosisBatch batch =
+                service.getFieldValuesForListing(LISTING_ID, List.of(listingChecklistItem));
+
+        DiagnosisAggregationService.DiagnosisFieldValue value =
+                batch.fieldValuesByItemId().get(ITEM_ID).get(DiagnosisFieldName.MODEL_NAME);
+        assertThat(value.sourceEvidenceId()).isEqualTo(PHOTO_EVIDENCE_ID);
+        assertThat(value.sourceType()).isEqualTo(DiagnosisSourceType.OCR);
+    }
+
+    @Test
+    void batchExposesCdnUrlPerEvidenceId() {
+        Evidence evidence = photoEvidence();
+        evidence.markReady("https://cdn.example.com/e.png");
+        when(evidenceRepository.findAllByListingId(LISTING_ID)).thenReturn(List.of(evidence));
+        when(ocrResultRepository.findAllByEvidenceIdIn(anyList())).thenReturn(List.of());
+
+        DiagnosisAggregationService.ListingDiagnosisBatch batch =
+                service.getFieldValuesForListing(LISTING_ID, List.of(listingChecklistItem));
+
+        assertThat(batch.cdnUrlByEvidenceId().get(PHOTO_EVIDENCE_ID)).isEqualTo("https://cdn.example.com/e.png");
     }
 }

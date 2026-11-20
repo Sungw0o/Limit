@@ -878,6 +878,18 @@ public class ProductApplicationService {
                     cb.equal(
                             completedItem.get("completionStatus"),
                             ChecklistItemCompletionStatus.COMPLETED));
+            /*
+              min과 max가 모두 있을 때 greaterThanOrEqualTo + lessThanOrEqualTo로 따로 비교하면
+              같은 subquery 인스턴스를 두 술어에 나눠 써도 Hibernate가 SQL에는 동일한 상관
+              서브쿼리를 두 번(각 행마다 count 계산을 두 번) 그대로 풀어낸다. 실측(k6 100VU,
+              seed 50,000건, 2026-08-10)에서 상품 목록 count 쿼리가 3.8~4.3s까지 걸렸는데,
+              EXPLAIN상 이 서브쿼리가 매번 두 번(Select #2, Select #3) 실행되는 게 확인됐다.
+              cb.between으로 묶으면 subquery가 SQL에 한 번만 나오고 그 결과를 BETWEEN으로
+              재사용하므로 상태(ON_SALE)당 서브쿼리 실행 횟수가 절반으로 준다.
+            */
+            if (min != null && max != null) {
+                return cb.between(completedQuery, min.longValue(), max.longValue());
+            }
             var predicate = cb.conjunction();
             if (min != null) {
                 predicate = cb.and(

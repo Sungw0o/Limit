@@ -2,11 +2,9 @@ package com.c203.limit.domain.inspection.service;
 
 import com.c203.limit.domain.inspection.dto.response.DiagnosisSummaryItem;
 import com.c203.limit.domain.inspection.dto.response.ProductDiagnosisSummaryResponse;
-import com.c203.limit.domain.inspection.entity.Evidence;
 import com.c203.limit.domain.inspection.entity.ListingChecklistItem;
 import com.c203.limit.domain.inspection.enums.DiagnosisFieldName;
 import com.c203.limit.domain.inspection.enums.DiagnosisSummaryStatus;
-import com.c203.limit.domain.inspection.repository.EvidenceRepository;
 import com.c203.limit.domain.inspection.repository.ListingChecklistItemRepository;
 import com.c203.limit.domain.inspection.repository.ListingOwnerReader;
 import com.c203.limit.global.exception.BusinessException;
@@ -32,17 +30,14 @@ public class ProductDiagnosisSummaryService {
     private final ListingOwnerReader listingOwnerReader;
     private final ListingChecklistItemRepository listingChecklistItemRepository;
     private final DiagnosisAggregationService diagnosisAggregationService;
-    private final EvidenceRepository evidenceRepository;
 
     public ProductDiagnosisSummaryService(
             ListingOwnerReader listingOwnerReader,
             ListingChecklistItemRepository listingChecklistItemRepository,
-            DiagnosisAggregationService diagnosisAggregationService,
-            EvidenceRepository evidenceRepository) {
+            DiagnosisAggregationService diagnosisAggregationService) {
         this.listingOwnerReader = listingOwnerReader;
         this.listingChecklistItemRepository = listingChecklistItemRepository;
         this.diagnosisAggregationService = diagnosisAggregationService;
-        this.evidenceRepository = evidenceRepository;
     }
 
     @Transactional(readOnly = true)
@@ -70,12 +65,18 @@ public class ProductDiagnosisSummaryService {
 
         // 같은 필드(예: CPU)를 여러 체크리스트 항목이 각자 취합할 수 있어(OCR 화면 항목과 DXDIAG 항목처럼),
         // 필드마다 항목별로 다 나열하지 않고 하나만 골라 돌려준다 — 값이 있는 쪽을 우선한다.
-        List<DiagnosisSummaryItem> items =
-                checklistItems.isEmpty()
-                        ? List.of()
-                        : Arrays.stream(DiagnosisFieldName.values())
-                                .map(fieldName -> bestSummaryItem(checklistItems, fieldName))
-                                .toList();
+        // 항목×필드마다 개별 조회하던 것을 매물 단위 배치 조회 1회로 대체한다(N+1 회피).
+        List<DiagnosisSummaryItem> items;
+        if (checklistItems.isEmpty()) {
+            items = List.of();
+        } else {
+            DiagnosisAggregationService.ListingDiagnosisBatch batch =
+                    diagnosisAggregationService.getFieldValuesForListing(productId, checklistItems);
+            items =
+                    Arrays.stream(DiagnosisFieldName.values())
+                            .map(fieldName -> bestSummaryItem(checklistItems, fieldName, batch))
+                            .toList();
+        }
 
         boolean allExtractionsFailed =
                 !checklistItems.isEmpty() && items.stream().noneMatch(item -> item.status() == DiagnosisSummaryStatus.AVAILABLE);
@@ -87,10 +88,12 @@ public class ProductDiagnosisSummaryService {
     }
 
     private DiagnosisSummaryItem bestSummaryItem(
-            List<ListingChecklistItem> checklistItems, DiagnosisFieldName fieldName) {
+            List<ListingChecklistItem> checklistItems,
+            DiagnosisFieldName fieldName,
+            DiagnosisAggregationService.ListingDiagnosisBatch batch) {
         DiagnosisSummaryItem fallback = null;
         for (ListingChecklistItem item : checklistItems) {
-            DiagnosisSummaryItem candidate = toSummaryItem(item.getId(), fieldName);
+            DiagnosisSummaryItem candidate = toSummaryItem(item.getId(), fieldName, batch);
             if (candidate.status() == DiagnosisSummaryStatus.AVAILABLE) {
                 return candidate;
             }
@@ -101,22 +104,19 @@ public class ProductDiagnosisSummaryService {
         return fallback;
     }
 
-    private DiagnosisSummaryItem toSummaryItem(Long itemId, DiagnosisFieldName fieldName) {
+    private DiagnosisSummaryItem toSummaryItem(
+            Long itemId, DiagnosisFieldName fieldName, DiagnosisAggregationService.ListingDiagnosisBatch batch) {
         DiagnosisAggregationService.DiagnosisFieldValue fieldValue =
-                diagnosisAggregationService.getFieldValue(itemId, fieldName);
+                batch.fieldValuesByItemId().get(itemId).get(fieldName);
         String value = fieldValue.fileParseValue() != null ? fieldValue.fileParseValue() : fieldValue.ocrValue();
 
         DiagnosisSummaryStatus status =
                 value != null ? DiagnosisSummaryStatus.AVAILABLE : DiagnosisSummaryStatus.EXTRACTION_FAILED;
-        String originalFileUrl = resolveOriginalFileUrl(fieldValue.sourceEvidenceId());
+        String originalFileUrl =
+                fieldValue.sourceEvidenceId() == null
+                        ? null
+                        : batch.cdnUrlByEvidenceId().get(fieldValue.sourceEvidenceId());
 
         return new DiagnosisSummaryItem(fieldName.name(), originalFileUrl, value, status);
-    }
-
-    private String resolveOriginalFileUrl(Long sourceEvidenceId) {
-        if (sourceEvidenceId == null) {
-            return null;
-        }
-        return evidenceRepository.findById(sourceEvidenceId).map(Evidence::getCdnUrl).orElse(null);
     }
 }

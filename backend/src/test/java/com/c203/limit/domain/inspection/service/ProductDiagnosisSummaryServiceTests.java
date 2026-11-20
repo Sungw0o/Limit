@@ -2,26 +2,23 @@ package com.c203.limit.domain.inspection.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.c203.limit.domain.inspection.dto.response.DiagnosisSummaryItem;
 import com.c203.limit.domain.inspection.dto.response.ProductDiagnosisSummaryResponse;
-import com.c203.limit.domain.inspection.entity.Evidence;
 import com.c203.limit.domain.inspection.entity.ListingChecklistItem;
 import com.c203.limit.domain.inspection.enums.DiagnosisFieldName;
 import com.c203.limit.domain.inspection.enums.DiagnosisSourceType;
 import com.c203.limit.domain.inspection.enums.DiagnosisSummaryStatus;
-import com.c203.limit.domain.inspection.enums.EvidenceType;
-import com.c203.limit.domain.inspection.repository.EvidenceRepository;
 import com.c203.limit.domain.inspection.repository.ListingChecklistItemRepository;
 import com.c203.limit.domain.inspection.repository.ListingOwnerReader;
 import com.c203.limit.global.exception.BusinessException;
 import com.c203.limit.global.exception.ErrorCode;
-import java.time.LocalDateTime;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +38,6 @@ class ProductDiagnosisSummaryServiceTests {
     @Mock ListingOwnerReader listingOwnerReader;
     @Mock ListingChecklistItemRepository listingChecklistItemRepository;
     @Mock DiagnosisAggregationService diagnosisAggregationService;
-    @Mock EvidenceRepository evidenceRepository;
 
     ProductDiagnosisSummaryService service;
 
@@ -49,7 +45,7 @@ class ProductDiagnosisSummaryServiceTests {
     void setUp() {
         service =
                 new ProductDiagnosisSummaryService(
-                        listingOwnerReader, listingChecklistItemRepository, diagnosisAggregationService, evidenceRepository);
+                        listingOwnerReader, listingChecklistItemRepository, diagnosisAggregationService);
     }
 
     private void stubProductExists() {
@@ -64,21 +60,39 @@ class ProductDiagnosisSummaryServiceTests {
                 .orElseThrow(() -> new AssertionError("field not found: " + fieldName));
     }
 
+    /** 항목 하나에 대해 전체 필드를 EMPTY로 채운 기본 맵(배치 응답 스텁용). */
+    private Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue> allFieldsEmpty() {
+        Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue> map =
+                new EnumMap<>(DiagnosisFieldName.class);
+        for (DiagnosisFieldName fieldName : DiagnosisFieldName.values()) {
+            map.put(fieldName, EMPTY);
+        }
+        return map;
+    }
+
     @Test
     void mixesAvailableAndExtractionFailedFields() {
         stubProductExists();
         ListingChecklistItem item = mock(ListingChecklistItem.class);
         when(item.getId()).thenReturn(ITEM_ID);
+        List<ListingChecklistItem> items = List.of(item);
         when(listingChecklistItemRepository.findAllByListingIdOrderByDisplayOrderAsc(PRODUCT_ID))
-                .thenReturn(List.of(item));
+                .thenReturn(items);
 
-        when(diagnosisAggregationService.getFieldValue(eq(ITEM_ID), any(DiagnosisFieldName.class))).thenReturn(EMPTY);
-        when(diagnosisAggregationService.getFieldValue(ITEM_ID, DiagnosisFieldName.CPU))
+        Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue> itemFields = allFieldsEmpty();
+        itemFields.put(
+                DiagnosisFieldName.CPU,
+                new DiagnosisAggregationService.DiagnosisFieldValue(
+                        "ocr cpu", "file cpu", 5L, DiagnosisSourceType.DXDIAG));
+
+        Map<Long, Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue>> fieldValuesByItemId =
+                new HashMap<>();
+        fieldValuesByItemId.put(ITEM_ID, itemFields);
+        Map<Long, String> cdnUrlByEvidenceId = Map.of(5L, "https://cdn.example.com/evidence/5.txt");
+
+        when(diagnosisAggregationService.getFieldValuesForListing(PRODUCT_ID, items))
                 .thenReturn(
-                        new DiagnosisAggregationService.DiagnosisFieldValue(
-                                "ocr cpu", "file cpu", 5L, DiagnosisSourceType.DXDIAG));
-
-        when(evidenceRepository.findById(5L)).thenReturn(Optional.of(readyEvidence("https://cdn.example.com/evidence/5.txt")));
+                        new DiagnosisAggregationService.ListingDiagnosisBatch(fieldValuesByItemId, cdnUrlByEvidenceId));
 
         ProductDiagnosisSummaryResponse response = service.getSummary(PRODUCT_ID);
 
@@ -107,20 +121,27 @@ class ProductDiagnosisSummaryServiceTests {
         when(ocrItem.getId()).thenReturn(ocrItemId);
         ListingChecklistItem dxdiagItem = mock(ListingChecklistItem.class);
         when(dxdiagItem.getId()).thenReturn(dxdiagItemId);
+        List<ListingChecklistItem> items = List.of(ocrItem, dxdiagItem);
         when(listingChecklistItemRepository.findAllByListingIdOrderByDisplayOrderAsc(PRODUCT_ID))
-                .thenReturn(List.of(ocrItem, dxdiagItem));
+                .thenReturn(items);
 
-        when(diagnosisAggregationService.getFieldValue(eq(ocrItemId), any(DiagnosisFieldName.class)))
-                .thenReturn(EMPTY);
-        when(diagnosisAggregationService.getFieldValue(eq(dxdiagItemId), any(DiagnosisFieldName.class)))
-                .thenReturn(EMPTY);
         // OCR 항목은 CPU 인식에 실패했고, DXDIAG 항목이 대신 CPU 값을 갖고 있는 상황.
-        when(diagnosisAggregationService.getFieldValue(dxdiagItemId, DiagnosisFieldName.CPU))
+        Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue> ocrItemFields = allFieldsEmpty();
+        Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue> dxdiagItemFields = allFieldsEmpty();
+        dxdiagItemFields.put(
+                DiagnosisFieldName.CPU,
+                new DiagnosisAggregationService.DiagnosisFieldValue(
+                        null, "dxdiag cpu", 7L, DiagnosisSourceType.DXDIAG));
+
+        Map<Long, Map<DiagnosisFieldName, DiagnosisAggregationService.DiagnosisFieldValue>> fieldValuesByItemId =
+                new HashMap<>();
+        fieldValuesByItemId.put(ocrItemId, ocrItemFields);
+        fieldValuesByItemId.put(dxdiagItemId, dxdiagItemFields);
+        Map<Long, String> cdnUrlByEvidenceId = Map.of(7L, "https://cdn.example.com/evidence/7.txt");
+
+        when(diagnosisAggregationService.getFieldValuesForListing(PRODUCT_ID, items))
                 .thenReturn(
-                        new DiagnosisAggregationService.DiagnosisFieldValue(
-                                null, "dxdiag cpu", 7L, DiagnosisSourceType.DXDIAG));
-        when(evidenceRepository.findById(7L))
-                .thenReturn(Optional.of(readyEvidence("https://cdn.example.com/evidence/7.txt")));
+                        new DiagnosisAggregationService.ListingDiagnosisBatch(fieldValuesByItemId, cdnUrlByEvidenceId));
 
         ProductDiagnosisSummaryResponse response = service.getSummary(PRODUCT_ID);
 
@@ -139,13 +160,5 @@ class ProductDiagnosisSummaryServiceTests {
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         exception -> assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.PRODUCT_NOT_FOUND));
-    }
-
-    private Evidence readyEvidence(String cdnUrl) {
-        Evidence evidence =
-                Evidence.upload(
-                        PRODUCT_ID, null, EvidenceType.DIAGNOSTIC_FILE, "s3/key", "text/plain", LocalDateTime.now());
-        evidence.markReady(cdnUrl);
-        return evidence;
     }
 }

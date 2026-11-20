@@ -22,11 +22,13 @@ import com.c203.limit.global.exception.ErrorCode;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -112,6 +114,223 @@ public class DiagnosisAggregationService {
                 fileParse == null ? null : fileParse.value(),
                 primary == null ? null : primary.evidenceId(),
                 primary == null ? null : primary.sourceType());
+    }
+
+    /**
+     * 매물 상세 요약처럼 체크리스트 항목×필드 전체를 한 번에 봐야 하는 호출자를 위한 배치 조회.
+     * {@link #getFieldValue}를 항목·필드마다 반복 호출하면 매물 하나당 evidence/OCR/DXDIAG/배터리
+     * 테이블에 N(항목 수)×M(필드 수)번 쿼리가 나가던 것을, 매물 단위로 evidence 1번 + OCR/DXDIAG/배터리
+     * 각 1번(최대 4쿼리)만 조회하도록 배치 처리한다. 필드 선택 로직(isFieldVisibleFor 등)은
+     * {@link #collectOcrValues}/{@link #collectFileParseValues}와 동일하게 재사용해 결과가 갈리지
+     * 않게 한다. {@link #getFieldValue}/{@link #getDiagnosis}와 그 호출자(DiagnosisValueConfirmationService,
+     * DeviceInfoCompletionService)는 그대로 두고, 이 메서드는 추가 전용이다.
+     */
+    @Transactional(readOnly = true)
+    public ListingDiagnosisBatch getFieldValuesForListing(Long listingId, List<ListingChecklistItem> items) {
+        List<Evidence> allEvidence = evidenceRepository.findAllByListingId(listingId);
+
+        Map<Long, List<Evidence>> evidenceByItem =
+                allEvidence.stream()
+                        .collect(Collectors.groupingBy(evidence -> evidence.getListingChecklistItem().getId()));
+
+        List<Long> photoEvidenceIds =
+                allEvidence.stream()
+                        .filter(evidence -> evidence.getEvidenceType() == EvidenceType.PHOTO)
+                        .map(Evidence::getId)
+                        .toList();
+        List<Long> diagnosticFileEvidenceIds =
+                allEvidence.stream()
+                        .filter(evidence -> evidence.getEvidenceType() == EvidenceType.DIAGNOSTIC_FILE)
+                        .map(Evidence::getId)
+                        .toList();
+
+        Map<Long, List<OcrResult>> ocrByEvidence =
+                (photoEvidenceIds.isEmpty()
+                                ? List.<OcrResult>of()
+                                : ocrResultRepository.findAllByEvidenceIdIn(photoEvidenceIds))
+                        .stream().collect(Collectors.groupingBy(OcrResult::getEvidenceId));
+        Map<Long, List<DxdiagResult>> dxdiagByEvidence =
+                (diagnosticFileEvidenceIds.isEmpty()
+                                ? List.<DxdiagResult>of()
+                                : dxdiagResultRepository.findAllByEvidenceIdIn(diagnosticFileEvidenceIds))
+                        .stream().collect(Collectors.groupingBy(DxdiagResult::getEvidenceId));
+        Map<Long, List<BatteryReportResult>> batteryByEvidence =
+                (diagnosticFileEvidenceIds.isEmpty()
+                                ? List.<BatteryReportResult>of()
+                                : batteryReportResultRepository.findAllByEvidenceIdIn(diagnosticFileEvidenceIds))
+                        .stream().collect(Collectors.groupingBy(BatteryReportResult::getEvidenceId));
+
+        // Collectors.toMap은 value가 null이면(아직 처리 전이라 cdnUrl이 없는 evidence) NPE를 던지므로
+        // 직접 채운다 — 원래 단건 경로(evidenceRepository.findById(...).map(Evidence::getCdnUrl))도
+        // cdnUrl이 null이면 그대로 null을 돌려주던 동작이라 그와 동일하게 맞춘다.
+        Map<Long, String> cdnUrlByEvidenceId = new HashMap<>();
+        for (Evidence evidence : allEvidence) {
+            cdnUrlByEvidenceId.put(evidence.getId(), evidence.getCdnUrl());
+        }
+
+        Map<Long, Map<DiagnosisFieldName, DiagnosisFieldValue>> valuesByItem = new HashMap<>();
+        for (ListingChecklistItem item : items) {
+            List<Evidence> itemEvidence = evidenceByItem.getOrDefault(item.getId(), List.of());
+
+            List<Long> itemPhotoEvidenceIds =
+                    itemEvidence.stream()
+                            .filter(evidence -> evidence.getEvidenceType() == EvidenceType.PHOTO)
+                            .map(Evidence::getId)
+                            .toList();
+            List<Long> itemDiagnosticEvidenceIds =
+                    isDeviceInfoItem(item)
+                            ? diagnosticFileEvidenceIds
+                            : itemEvidence.stream()
+                                    .filter(evidence -> evidence.getEvidenceType() == EvidenceType.DIAGNOSTIC_FILE)
+                                    .map(Evidence::getId)
+                                    .toList();
+
+            Map<DiagnosisFieldName, FieldSource> ocrValues =
+                    collectOcrValuesFromBatch(item, itemPhotoEvidenceIds, ocrByEvidence);
+            Map<DiagnosisFieldName, FieldSource> fileParseValues =
+                    collectFileParseValuesFromBatch(item, itemDiagnosticEvidenceIds, dxdiagByEvidence, batteryByEvidence);
+
+            Map<DiagnosisFieldName, DiagnosisFieldValue> perField = new EnumMap<>(DiagnosisFieldName.class);
+            for (DiagnosisFieldName fieldName : DiagnosisFieldName.values()) {
+                FieldSource ocr = ocrValues.get(fieldName);
+                FieldSource fileParse = fileParseValues.get(fieldName);
+                FieldSource primary = fileParse != null ? fileParse : ocr;
+                if (primary == null) {
+                    primary = fallbackEditTargetFromBatch(item, itemEvidence);
+                }
+                String manualValue = item.manualDiagnosisValue(fieldName);
+                perField.put(
+                        fieldName,
+                        new DiagnosisFieldValue(
+                                ocr == null ? manualValue : ocr.value(),
+                                fileParse == null ? null : fileParse.value(),
+                                primary == null ? null : primary.evidenceId(),
+                                primary == null ? null : primary.sourceType()));
+            }
+            valuesByItem.put(item.getId(), perField);
+        }
+
+        return new ListingDiagnosisBatch(valuesByItem, cdnUrlByEvidenceId);
+    }
+
+    private Map<DiagnosisFieldName, FieldSource> collectOcrValuesFromBatch(
+            ListingChecklistItem item, List<Long> photoEvidenceIds, Map<Long, List<OcrResult>> ocrByEvidence) {
+        Map<DiagnosisFieldName, FieldSource> values = new EnumMap<>(DiagnosisFieldName.class);
+        if (photoEvidenceIds.isEmpty()) {
+            return values;
+        }
+        photoEvidenceIds.stream()
+                .flatMap(evidenceId -> ocrByEvidence.getOrDefault(evidenceId, List.of()).stream())
+                .sorted(Comparator.comparing(OcrResult::getDetectedAt))
+                .forEach(
+                        result -> {
+                            DiagnosisFieldName fieldName = DiagnosisFieldName.fromOcrFieldType(result.getFieldType());
+                            if (isFieldVisibleFor(item, fieldName)) {
+                                putIfPresent(
+                                        values,
+                                        fieldName,
+                                        result.getParsedValue(),
+                                        result.getEvidenceId(),
+                                        DiagnosisSourceType.OCR);
+                            }
+                        });
+        return values;
+    }
+
+    private Map<DiagnosisFieldName, FieldSource> collectFileParseValuesFromBatch(
+            ListingChecklistItem item,
+            List<Long> diagnosticFileEvidenceIds,
+            Map<Long, List<DxdiagResult>> dxdiagByEvidence,
+            Map<Long, List<BatteryReportResult>> batteryByEvidence) {
+        Map<DiagnosisFieldName, FieldSource> values = new EnumMap<>(DiagnosisFieldName.class);
+        if (diagnosticFileEvidenceIds.isEmpty()) {
+            return values;
+        }
+
+        diagnosticFileEvidenceIds.stream()
+                .flatMap(evidenceId -> dxdiagByEvidence.getOrDefault(evidenceId, List.of()).stream())
+                .sorted(Comparator.comparing(DxdiagResult::getParsedAt))
+                .forEach(
+                        result -> {
+                            Long evidenceId = result.getEvidenceId();
+                            putDxdiagValue(values, item, DiagnosisFieldName.MODEL_NAME, result.getModelName(), evidenceId);
+                            putDxdiagValue(values, item, DiagnosisFieldName.OS_VERSION, result.getOsVersion(), evidenceId);
+                            putDxdiagValue(
+                                    values, item, DiagnosisFieldName.STORAGE_CAPACITY, result.getStorageCapacity(), evidenceId);
+                            putDxdiagValue(values, item, DiagnosisFieldName.CPU, result.getCpu(), evidenceId);
+                            putDxdiagValue(values, item, DiagnosisFieldName.RAM, result.getMemory(), evidenceId);
+                            putDxdiagValue(values, item, DiagnosisFieldName.GPU, result.getGpu(), evidenceId);
+                            putDxdiagValue(values, item, DiagnosisFieldName.GPU_MEMORY, result.getGpuMemory(), evidenceId);
+                            putDxdiagValue(
+                                    values, item, DiagnosisFieldName.DRIVER_VERSION, result.getDriverVersion(), evidenceId);
+                            putDxdiagValue(
+                                    values, item, DiagnosisFieldName.SOUND_DEVICE, result.getSoundDevice(), evidenceId);
+                        });
+
+        if (isDeviceInfoItem(item)) {
+            return values;
+        }
+
+        diagnosticFileEvidenceIds.stream()
+                .flatMap(evidenceId -> batteryByEvidence.getOrDefault(evidenceId, List.of()).stream())
+                .sorted(Comparator.comparing(BatteryReportResult::getParsedAt))
+                .forEach(
+                        result -> {
+                            Long evidenceId = result.getEvidenceId();
+                            putIfPresent(
+                                    values,
+                                    DiagnosisFieldName.DESIGN_CAPACITY,
+                                    result.getDesignCapacity(),
+                                    evidenceId,
+                                    DiagnosisSourceType.BATTERY_REPORT);
+                            putIfPresent(
+                                    values,
+                                    DiagnosisFieldName.FULL_CHARGE_CAPACITY,
+                                    result.getFullChargeCapacity(),
+                                    evidenceId,
+                                    DiagnosisSourceType.BATTERY_REPORT);
+                            putIfPresent(
+                                    values,
+                                    DiagnosisFieldName.CYCLE_COUNT,
+                                    result.getCycleCount() == null ? null : String.valueOf(result.getCycleCount()),
+                                    evidenceId,
+                                    DiagnosisSourceType.BATTERY_REPORT);
+                            putIfPresent(
+                                    values,
+                                    DiagnosisFieldName.BATTERY_MANUFACTURER,
+                                    result.getBatteryManufacturer(),
+                                    evidenceId,
+                                    DiagnosisSourceType.BATTERY_REPORT);
+                            putIfPresent(
+                                    values,
+                                    DiagnosisFieldName.CAPACITY_RATIO,
+                                    result.getCapacityRatio() == null ? null : result.getCapacityRatio().toPlainString(),
+                                    evidenceId,
+                                    DiagnosisSourceType.BATTERY_REPORT);
+                        });
+        return values;
+    }
+
+    private FieldSource fallbackEditTargetFromBatch(ListingChecklistItem item, List<Evidence> itemEvidence) {
+        if (item.getEvidenceType() == EvidenceType.PHOTO) {
+            return itemEvidence.stream()
+                    .filter(evidence -> evidence.getEvidenceType() == EvidenceType.PHOTO)
+                    .max(Comparator.comparing(Evidence::getUploadedAt))
+                    .map(evidence -> new FieldSource(null, evidence.getId(), DiagnosisSourceType.OCR))
+                    .orElse(null);
+        }
+        if (item.getEvidenceType() == EvidenceType.DIAGNOSTIC_FILE) {
+            DiagnosisSourceType sourceType =
+                    "BATTERY_REPORT".equals(item.getParserType())
+                            ? DiagnosisSourceType.BATTERY_REPORT
+                            : DiagnosisSourceType.DXDIAG;
+            return itemEvidence.stream()
+                    .filter(evidence -> evidence.getEvidenceType() == EvidenceType.DIAGNOSTIC_FILE)
+                    .max(Comparator.comparing(Evidence::getUploadedAt))
+                    .map(evidence -> new FieldSource(null, evidence.getId(), sourceType))
+                    .orElse(null);
+        }
+        return null;
     }
 
     /**
@@ -339,4 +558,9 @@ public class DiagnosisAggregationService {
     /** {@link #getFieldValue} 응답: OCR/파일파싱 원본값과, 우선순위로 고른 값의 출처. */
     public record DiagnosisFieldValue(
             String ocrValue, String fileParseValue, Long sourceEvidenceId, DiagnosisSourceType sourceType) {}
+
+    /** {@link #getFieldValuesForListing} 응답: 항목id·필드별 값과, evidence id별 CDN URL(원본 파일 링크 해석용). */
+    public record ListingDiagnosisBatch(
+            Map<Long, Map<DiagnosisFieldName, DiagnosisFieldValue>> fieldValuesByItemId,
+            Map<Long, String> cdnUrlByEvidenceId) {}
 }
